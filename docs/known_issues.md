@@ -20,6 +20,7 @@ Reference for anyone running Toolathlon evaluations with non-default models or e
 | 12 | [Runaway loops — same tool 35-82x](#issue-12-runaway-tool-call-loops--same-tool-called-35-82x) | Qwen3 (FT worse) | Model issue (unfixable) |
 | 13 | [`cache_control` on empty text blocks](#issue-13-cache_control-cannot-be-set-for-empty-text-blocks-anthropic-api) | Claude via Anthropic | Fixed |
 | 14 | [Portkey gateway routing error](#issue-14-portkey-gateway--x-portkey-provider-needs-to-be-passed) | Portkey-routed models | Workaround (config) |
+| 15 | [`run_parallel.sh` overrides config step limit](#issue-15-run_parallelsh-overrides-config-step-limit-to-100) | All parallel runs | Documented (by design) |
 
 ---
 
@@ -434,3 +435,25 @@ curl -s "https://api.portkey.ai/v1/chat/completions" \
   -H "Authorization: Bearer $PORTKEY_API_KEY" \
   -d '{"model": "@anthropic/claude-opus-4-6", "messages": [{"role":"user","content":"hi"}], "max_tokens": 5}'
 ```
+
+---
+
+## Issue 15: `run_parallel.sh` overrides config step limit to 100
+
+**Affected:** All models run via `run_parallel.sh`
+**Not affected:** Single-task runs via `run_single_containerized.sh` or `run_single_decoupled.sh` with explicit `maxstep` argument
+
+**Symptoms:** Model hits `RuntimeError: Failed to get agent response within 100 inner steps` even though the eval config JSON specifies `max_steps_under_single_turn_mode: 200`.
+
+**Root cause:** `run_parallel.sh` hardcodes `MAX_STEPS="100"` (line ~23) and passes it to the per-task runner as `--maxstep $MAX_STEPS`. The per-task runner passes it to `main.py` as `--max_steps_under_single_turn_mode 100`. In `main.py` (lines 54-55), the CLI argument overrides the config file value:
+
+```python
+if args.max_steps_under_single_turn_mode is not None:
+    eval_config_dict['global_task_config']['max_steps_under_single_turn_mode'] = args.max_steps_under_single_turn_mode
+```
+
+**Impact:** All parallel evaluation runs (Claude Opus, Qwen3-30B base, Qwen3-30B FT v1, Qwen3-30B FT v2) use an effective limit of **100 steps**, not 200. This is consistent across all models, so comparisons are fair. Confirmed by checking Opus run logs: `total: 5/100`.
+
+**To change the limit:** Edit `MAX_STEPS` in `run_parallel.sh`, or pass a custom config and modify the runner to not override it. Note that increasing the limit will increase runtime and API costs for models that get stuck in loops.
+
+**This is by design** — the parallel runner uses a conservative step limit for cost control. The config file's `max_steps_under_single_turn_mode` only takes effect for single-task runs where `--max_steps_under_single_turn_mode` is not passed on the CLI.

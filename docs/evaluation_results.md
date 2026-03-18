@@ -4,7 +4,7 @@ Date: 2026-03-18
 
 ## 1. Executive Summary
 
-[Toolathlon](https://toolathlon.xyz/) is a benchmark for evaluating language agents on 600+ diverse, long-horizon tool-use tasks in realistic environments (Canvas LMS, email, Snowflake, Kubernetes, Google Workspace, etc.). We evaluated three model configurations on a 78-task subset, excluding Google Workspace tasks which are not yet configured.
+[Toolathlon](https://toolathlon.xyz/) is a benchmark for evaluating language agents on 600+ diverse, long-horizon tool-use tasks in realistic environments (Canvas LMS, email, Snowflake, Kubernetes, Google Workspace, etc.). We evaluated four model configurations on a 78-task subset, excluding Google Workspace tasks which are not yet configured.
 
 ### Results at a Glance
 
@@ -14,6 +14,7 @@ Date: 2026-03-18
 | Claude Opus 4.6 (Run 2, decoupled) | 37 | 39 | 0 | 0 | **48.7%** (37/76) |
 | Qwen3-30B Instruct (base) | 3 | 62 | 10 | 3 | **3.8%** (3/78) |
 | Qwen3-30B Instruct (fine-tuned, Run 2) | 3 | 41 | 33 | 1 | **3.9%** (3/77) |
+| Qwen3-30B Instruct (fine-tuned v2, in progress) | 3 | 53 | 10 | 0 | **4.5%** (3/66, 66/78 done) |
 
 Pass rate treats inconclusive and infra failures as failures. Opus Run 2 evaluated 76/78 tasks (2 missing: `ab-testing`, `experiments-recordings`).
 
@@ -21,6 +22,7 @@ Pass rate treats inconclusive and infra failures as failures. Opus Run 2 evaluat
 - Claude Opus dramatically outperforms Qwen3-30B on long-horizon agentic tasks (48-50% vs 3-4%).
 - Opus results are stable across runs: 50.0% vs 48.7%, with 12 tasks flipping between runs (see Section 5.2).
 - All Opus failures are "agent completed, eval failed" — zero crashes or inconclusives in Run 2.
+- Fine-tuned v2 checkpoint shows marginal improvement over v1 (4.5% vs 3.9% at 66/78 tasks, still in progress). First non-git pass: `canvas-art-quiz`.
 
 ---
 
@@ -103,6 +105,19 @@ Fine-tuned:     content="<tool_call>\n{\"name\": \"get_weather\", ...}\n</tool_c
 
 This is handled transparently by `utils/api_model/hermes_tool_parser.py` (see Section 6).
 
+### Qwen3-30B-A3B-Instruct-2507 (fine-tuned v2)
+
+| Setting | Value |
+|---------|-------|
+| Model ID | `Qwen/Qwen3-30B-A3B-Instruct-2507:m6fw9e8c8o22wggpogmfqu7y` |
+| Config file | `scripts/qwen3_ft_run_v2.json` |
+| Runner | **Decoupled** |
+| `max_tokens` | 8192 |
+| Tool call format | **Hermes `<tool_call>` tags in content** (same as FT v1) |
+| Status | In progress (66/78 tasks completed) |
+
+New fine-tuned checkpoint. Same framework fixes as FT v1. Uses `hermes_tool_parser.py` for tool call parsing.
+
 ---
 
 ## 4. Methodology
@@ -129,6 +144,8 @@ This is handled transparently by `utils/api_model/hermes_tool_parser.py` (see Se
 | **Decoupled** | Container handles preprocess + eval + MCP gateway; agent loop runs on host via SSE | When host-side code changes are needed (e.g. API compatibility fixes) |
 
 We used the containerized runner for Opus Run 1, the decoupled runner for Opus Run 2 (to pick up the cache_control fix) and for all Qwen runs (required for the 422 fix and hermes parser — see Section 6).
+
+**Note on step limits:** All configs specify `max_steps_under_single_turn_mode: 200`, but `run_parallel.sh` hardcodes `MAX_STEPS=100` and passes it as a CLI argument to `main.py`, which overrides the config value (see `main.py:54-55`). The effective step limit for all parallel runs is **100 steps**, applied equally across all models. This was confirmed by checking Opus run logs showing `total: 5/100`.
 
 ### Scoring
 
@@ -199,7 +216,48 @@ The fine-tuned model passes the same 2 git tasks differently from the base model
 
 Remaining inconclusives are regular runaway loops (same tool called 35-82x), not `claim_done` loops. This is a training issue unrelated to the framework fixes.
 
-### 5.1 Head-to-Head: Opus vs Qwen
+### Qwen3-30B Instruct (fine-tuned v2) — In Progress
+
+| Metric | Value |
+|--------|-------|
+| Pass | 3 (`canvas-art-quiz`, `git-milestone`, `git-repo`) |
+| Fail | 53 |
+| Inconclusive | 10 (all step-limit exhaustion at 100 steps) |
+| Infra failure | 0 |
+| **Pass rate** | **4.5%** (3/66, run in progress — 66/78 tasks completed) |
+
+New checkpoint (`m6fw9e8c8o22wggpogmfqu7y`). Passes the same 2 git tasks as FT v1, plus `canvas-art-quiz` — the first non-git task to pass on any fine-tuned variant. All 10 inconclusives are step-limit exhaustion (`RuntimeError: Failed to get agent response within 100 inner steps`). Zero infra errors — cleanest run so far.
+
+#### FT v2 Failure & Inconclusive Analysis
+
+**Inconclusive breakdown (9 tasks):**
+
+| Pattern | Count | Tasks | Description |
+|---------|-------|-------|-------------|
+| Runaway loop (single tool >50%) | 3 | `huggingface-upload`, `travel-exchange`, `paper-checker` | Classic single-tool repetition (search_files 76x, get_historical_stock_prices 84x, search_files 70x) |
+| Distributed thrashing | 6 | `canvas-submit-late-work`, `detect-revised-terms`, `inventory-sync`, `notion-hr`, `travel-expense-reimbursement`, `woocommerce-new-product` | Model uses multiple tools but can't complete within 100 steps. More "intelligent" than pure runaway — e.g. `detect-revised-terms` does 45 PDF searches + 29 PDF reads |
+
+All 9 hit the 100-step ceiling. The distributed thrashing tasks might benefit from a higher step limit — the model is doing real multi-service work, just too slowly.
+
+**Failure breakdown (45 tasks):**
+
+| Category | Count | Pattern |
+|----------|-------|---------|
+| Early exit (<5 tool calls) | 3 | `personal-website-construct` (2 calls), `sync-todo-to-readme` (1 call), `task-tracker` (2 calls) — agent barely engaged |
+| Low effort (5-19 calls) | 18 | Tried briefly, produced wrong/missing output. Common: missing files, wrong row counts, couldn't find resources |
+| Medium effort (20-79 calls) | 23 | Substantive attempt, failed on details — format/structure wrong, partial completion, data mismatches |
+| High effort (80+ calls) | 1 | `canvas-list-test` (87 calls) — close to step limit |
+
+**Key regressions vs other Qwen runs:**
+- `git-bug-hunt`: PASS on base Qwen → FAIL on FT v2 (fine-tuning regression)
+- `find-alita-paper`: PASS on base Qwen → FAIL on FT v2 (9 calls, couldn't find PDF)
+
+**FT v2 vs FT v1 improvements:**
+- Fewer runaway loops: 9 inconclusives (v2) vs 18 (v1) — model completes instead of looping
+- New pass: `canvas-art-quiz` (failed on all prior Qwen runs)
+- 30 of 45 FT v2 failures passed on at least one Opus run, confirming the large capability gap between Claude Opus and Qwen3-30B on long-horizon tasks
+
+### 5.1 Head-to-Head: Opus vs Qwen (Opus Run 2 vs Qwen Base)
 
 Tasks where one model passed and the other didn't (using Opus Run 2 data):
 
@@ -545,6 +603,7 @@ Note: `enable_thinking` must be passed inside `chat_template_kwargs`, NOT as a t
 | `scripts/google_free_tasks.txt` | **New** | 78-task list excluding Google Workspace tasks |
 | `scripts/qwen3_run.json` | **New** | Eval config for Qwen3-30B base |
 | `scripts/qwen3_ft_run.json` | **New** | Eval config for Qwen3-30B fine-tuned |
+| `scripts/qwen3_ft_run_v2.json` | **New** | Eval config for Qwen3-30B fine-tuned v2 checkpoint |
 | `scripts/preflight_check.sh` | **New** | Pre-run environment validation script |
 | `scripts/check_progress.py` | **New** | Live progress monitoring script |
 

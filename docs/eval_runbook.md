@@ -168,6 +168,7 @@ Create a model-specific config file (e.g. `scripts/qwen3_run.json`):
 - Do NOT use `extra_body.enable_thinking` directly — PI's vLLM endpoint rejects it (422 error).
 - The `model` fields in the config are overridden by CLI args in `run_parallel.sh` for the **containerized** runner.
 - For the **decoupled** runner, the host agent loop reads the model name from the eval config's `agent.model.short_name`. You MUST create a separate config for each model variant (e.g. `scripts/qwen3_ft_run.json` for a fine-tuned checkpoint).
+- **Step limit override:** `run_parallel.sh` hardcodes `MAX_STEPS=100` which overrides the config's `max_steps_under_single_turn_mode` via CLI arg. The effective step limit for all parallel runs is 100, not 200. See [Issue 15](known_issues.md#issue-15-run_parallelsh-overrides-config-step-limit-to-100).
 
 #### Config per Model Variant
 
@@ -177,6 +178,7 @@ Each model variant needs its own config file with the correct `short_name`:
 |-------|------------|--------------|
 | Qwen3-30B base | `scripts/qwen3_run.json` | `Qwen/Qwen3-30B-A3B-Instruct-2507` |
 | Qwen3-30B fine-tuned | `scripts/qwen3_ft_run.json` | `Qwen/Qwen3-30B-A3B-Instruct-2507:n66oroaewm5aekfqvi6846i9` |
+| Qwen3-30B fine-tuned v2 | `scripts/qwen3_ft_run_v2.json` | `Qwen/Qwen3-30B-A3B-Instruct-2507:m6fw9e8c8o22wggpogmfqu7y` |
 | Claude Opus | `scripts/formal_run_v0.json` | `claude-opus-4-6` |
 
 ### 4. Task List
