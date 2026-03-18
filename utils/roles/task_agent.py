@@ -423,15 +423,27 @@ class TaskAgent:
                 else:
                     local_tools.append(tool_or_toolsets)
 
+        # Tell the SDK to treat stop-tools (e.g. claim_done) as final output so
+        # the inner agent loop exits immediately instead of asking the LLM again.
+        # This prevents models that keep re-calling claim_done from burning all
+        # inner steps while being a no-op for models that already stop correctly.
+        stop_tool_names = self.task_config.stop.tool_names or []
+        tool_use_behavior = (
+            {"stop_at_tool_names": stop_tool_names}
+            if stop_tool_names
+            else "run_llm_again"
+        )
+
         self.agent = Agent(
             name="Assistant",
             instructions=self.task_config.system_prompts.agent,
-            model=self.agent_model_provider.get_model(self.agent_config.model.real_name, 
+            model=self.agent_model_provider.get_model(self.agent_config.model.real_name,
                                                       debug = self.debug,
                                                       short_model_name=self.agent_config.model.short_name),
             mcp_servers=[*self.mcp_manager.get_all_connected_servers()],
             tools=local_tools,
             hooks=self.agent_hooks,
+            tool_use_behavior=tool_use_behavior,
             model_settings=ModelSettings(
                 tool_choice=self.agent_config.tool.tool_choice,
                 parallel_tool_calls=self.agent_config.tool.parallel_tool_calls,
@@ -731,12 +743,12 @@ class TaskAgent:
                     self.stats["agent_llm_requests"] += 1
 
                 self.logs = self.build_new_logs(result.input, result.new_items, server_conversation_tracker)
-                
+
                 self.user_simulator.receive_message(result.final_output)
-                
+
                 # Process agent response to get any recent tool calls
                 recent_tool_calls = await self.process_agent_response(result)
-                
+
                 # Check for termination on assistant response
                 if self.termination_checker(result.final_output, recent_tool_calls, 'agent'):
                     self._debug_print("Termination condition met by agent response")

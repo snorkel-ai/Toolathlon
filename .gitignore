@@ -124,5 +124,9 @@ duplicated_page_id.txt
 
 *.tmp
 
+.env
+toolathlon-eval-results.tar.gz
+scripts/test_10_tasks.txt
+
 configs/ports_config.yaml
 configs/port_changes*.json

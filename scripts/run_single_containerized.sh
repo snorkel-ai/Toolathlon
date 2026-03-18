@@ -112,6 +112,11 @@ if [ ! -z "${TOOLATHLON_OPENAI_API_KEY+x}" ]; then
     echo "Detected host TOOLATHLON_OPENAI_API_KEY, will pass into container"
 fi
 
+if [ ! -z "${TOOLATHLON_OPENAI_EXTRA_HEADERS+x}" ]; then
+    EXTRA_ENV_ARGS+=("-e" "TOOLATHLON_OPENAI_EXTRA_HEADERS=${TOOLATHLON_OPENAI_EXTRA_HEADERS}")
+    echo "Detected host TOOLATHLON_OPENAI_EXTRA_HEADERS, will pass into container"
+fi
+
 # Detect TOOLATHLON_MODEL_PARAMS_FILE - will copy file and set container path later
 HOST_MODEL_PARAMS_FILE=""
 CONTAINER_MODEL_PARAMS_FILE=""

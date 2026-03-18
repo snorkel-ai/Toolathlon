@@ -58,6 +58,8 @@ async def my_execute_function_tool_calls(
 
     results = await asyncio.gather(*tasks)
 
+    # Skip tool results where function_tool is None — they would crash the SDK at
+    # _check_for_final_output_from_tools when accessing tool_result.tool.name
     return [
         FunctionToolResult(
             tool=tool_run.function_tool,
@@ -69,6 +71,7 @@ async def my_execute_function_tool_calls(
             ),
         )
         for tool_run, result in zip(tool_runs, results)
+        if tool_run.function_tool is not None
     ]
 
 
@@ -140,15 +143,11 @@ def my_process_model_response(
         # Regular function tool call
         else:
             if output.name not in function_map:
-                # add not found tool call processing here
-                logger.warning(f"Tool {output.name} not found in agent {agent.name}")
-                items.append(ToolCallItem(raw_item=output, agent=agent))
-                functions.append(
-                        ToolRunFunction(
-                            tool_call=output,
-                            function_tool=None,
-                        )
-                    )
+                # Tool name is missing or not registered — skip silently to avoid
+                # crashing the SDK when it tries to access tool.name on None.
+                # This can happen when the hermes parser produces a tool call with
+                # a null/empty name from a malformed <tool_call> tag.
+                logger.warning(f"Tool '{output.name}' not found in agent {agent.name}, skipping")
                 continue            
             items.append(ToolCallItem(raw_item=output, agent=agent))
             functions.append(
