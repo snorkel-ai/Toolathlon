@@ -275,44 +275,64 @@ docker ps -a --format "{{.Names}}" | grep "toolathlon-finalpool" | xargs docker 
 
 ---
 
-## Issue 11: Early crash — `AttributeError: 'NoneType' object has no attribute 'name'`
+## Issue 11: Hallucinated tool names — premature exits and SDK crash
 
-**Affected:** Fine-tuned models using the Hermes `<tool_call>` parser (decoupled runner)
-**Not affected:** Base instruct models, Claude Opus
+**Affected:** All models (Opus, Qwen base, fine-tuned) — any model that calls a tool name not in the registered function map
+**Severity:** High — causes premature task exits after 1-7 tool calls out of ~100 possible
 
-**Symptoms:** Task crashes after 0-2 tool calls. `run.log` shows:
-```
-AttributeError: 'NoneType' object has no attribute 'name'
-```
+**Symptoms:** Task exits almost immediately with `status: success` on an empty workspace → `pass: false`. The model made 1-7 tool calls, hallucinated a non-existent tool name, and the run ended.
 
-**Root cause:** Call chain:
-1. Fine-tuned model generates a `<tool_call>` tag with a missing or null `name` field
-2. `hermes_tool_parser.py` silently skips it (`if not name: continue`) — no tool call is produced
-3. The response still reaches the SDK with no recognized tool calls
-4. `utils/openai_agents_monkey_patch/custom_run_impl.py` (old code) created a `ToolRunFunction` with `function_tool=None` for unrecognized tool names
-5. The SDK crashes at `agents/_run_impl.py` when accessing `.name` on the `None` tool
+### Background: Upstream Authors' Intent
 
-**Affected tasks (fine-tuned Qwen run):** `k8s-mysql`, `sync-todo-to-readme`, `dataset-license-issue`, `experiments-recordings`, `personal-website-construct`
+The original Toolathlon authors explicitly addressed this in their paper (Appendix B):
 
-**Fix (two-part):**
+> "(1) *Tool Error Handling:* When models call a non-existing tool or the tool call returns errors, the agent loop breaks and exits by default. **We improve this by giving the errors as observations to the agent**, so that the agent can continue the trajectory to proceed further."
 
-1. In `my_process_model_response` — skip unknown tool names instead of creating `ToolRunFunction(function_tool=None)`:
-```python
-if output.name not in function_map:
-    logger.warning(f"Tool '{output.name}' not found in agent {agent.name}, skipping")
-    continue
-```
+The upstream code (`origin/main`) implements this intent:
+- `my_process_model_response`: Creates `ToolRunFunction(function_tool=None)` for unknown tools (does NOT skip)
+- `run_single_tool`: Returns `"Tool X not found in agent Y"` as the error observation when `func_tool is None`
 
-2. In `my_execute_function_tool_calls` — filter None tools from the returned results to prevent any remaining None tools from reaching `_check_for_final_output_from_tools`:
-```python
-return [
-    FunctionToolResult(...)
-    for tool_run, result in zip(tool_runs, results)
-    if tool_run.function_tool is not None  # guard against SDK crash
-]
-```
+However, the upstream code has a **latent crash bug**: `FunctionToolResult(tool=tool_run.function_tool)` passes `None` to the SDK, which crashes at `_check_for_final_output_from_tools` when accessing `.tool.name`. This bug was never triggered in their evaluations because Claude-4.5-Sonnet and GPT-5 rarely hallucinate tool names.
 
-**Result:** Tasks that previously crashed with 0 tool calls now run to completion and produce a real pass/fail evaluation result.
+### Root Cause and Fix Evolution
+
+**Stage 1 — Upstream (origin/main):** Correct intent, latent crash bug
+- Creates error observation, but `FunctionToolResult(tool=None)` crashes the SDK
+
+**Stage 2 — Fork workaround (committed HEAD):** Fixed crash, introduced regression
+- Added `if tool_run.function_tool is not None` filter in `my_execute_function_tool_calls`
+- Changed `my_process_model_response` to `continue` (skip) on unknown tools
+- **Problem:** Silently drops the tool call result → model receives no response → SDK interprets as task complete → premature exit
+
+**Stage 3 — Current fix (working tree):** Completes upstream intent
+- `_make_dummy_tool(name)` creates a minimal `FunctionTool` wrapper
+- `FunctionToolResult(tool=dummy_tool)` prevents SDK crash
+- Error message `"Tool X not found in agent Y"` reaches the model as an observation
+- Model can retry with a valid tool name
+
+### Behavior Comparison
+
+| Approach | What happens | Task outcome |
+|----------|-------------|--------------|
+| Original SDK (unpatched) | `ModelBehaviorError` raised → task crashes | `pass: null` (inconclusive) |
+| Upstream monkey patch (origin/main) | Error observation created → SDK crashes on `None.name` | `pass: null` (crash) |
+| Fork workaround (Stage 2) | Tool call silently dropped → premature exit | `pass: false` (fail on empty workspace) |
+| **Current fix (Stage 3)** | Error observation returned to model → model retries | Model gets a fair chance to recover |
+
+### Affected Tasks (FT v2 Run)
+
+| Task | Hallucinated Tool | Tool Calls | Result | Impact |
+|------|-------------------|-----------|--------|--------|
+| `personal-website-construct` | `gw-github-get_repository` | 2 | FAIL | Strong candidate to flip |
+| `task-tracker` | `gw-github-get_repository` | 2 | FAIL | Strong candidate to flip |
+| `sync-todo-to-readme` | `gw-github-list_files` | 1 | FAIL | Strongest candidate (F1=0.975 on pre-existing state) |
+| `shopping-helper` | `gw-playwright_with_chunk-browser_list` | 7 | FAIL | Likely to make more progress |
+| `canvas-art-quiz` | `gw-canvas-canvas_update_quiz` | 10 | PASS | No change needed (already passed) |
+| `canvas-homework-grader-python` | `gw-canvas-canvas_list_submissions` | 43 | FAIL | Unlikely to flip (hit step limit) |
+
+### Benchmarking Fairness Note
+
+This fix is **NOT a model behavior intervention**. It completes the upstream Toolathlon authors' explicitly intended behavior (paper Appendix B). The upstream code already attempts to return errors as observations — our fix simply prevents the SDK crash that blocked this from working. All models benefit equally from this fix.
 
 ---
 

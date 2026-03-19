@@ -564,19 +564,29 @@ After:  status=success | tool_calls=46  | requests=12  | pass=true (eval passed)
 
 The trajectory shows the complete agent reasoning chain (explore workspace → search GitHub API → fetch repo data → write JSON → claim_done). All tool calls and responses are recorded. The eval script ran the same checks against the same groundtruth and passed.
 
-### 6.7 — Early Crash: `NoneType.name` from Malformed `<tool_call>` Tags
+### 6.7 — Hallucinated Tool Names: SDK Crash → Silent Skip → Error Recovery (Issue 11)
 
-**Affected:** Fine-tuned Qwen3 (5 tasks: `k8s-mysql`, `sync-todo-to-readme`, `dataset-license-issue`, `experiments-recordings`, `personal-website-construct`)
+**Affected:** All models — any model that calls a tool name not in the registered function map
 
-The fine-tuned model occasionally generates a `<tool_call>` tag with a missing/null `name` field. The hermes parser silently skips it, but the response still reaches the SDK monkey patch which previously created a `ToolRunFunction` with `function_tool=None`. The SDK then crashed accessing `.name` on `None`.
+When a model hallucinates a non-existent tool name (e.g., `gw-github-get_repository` instead of `gw-github-get_file_contents`), the agent framework must handle it gracefully. The upstream Toolathlon authors explicitly intended to return errors as observations to the model (paper Appendix B: *"We improve this by giving the errors as observations to the agent"*).
 
-**Fix:** `utils/openai_agents_monkey_patch/custom_run_impl.py` now skips unrecognized tool names with a warning instead of creating null tool results.
+**Three-stage fix evolution:**
 
-### 6.8 — Repetition Detection for Runaway Loops
+1. **Upstream (origin/main):** Correctly creates `ToolRunFunction(function_tool=None)` and returns error string `"Tool X not found in agent Y"`. However, has a latent crash bug: `FunctionToolResult(tool=None)` causes `AttributeError: 'NoneType' object has no attribute 'name'` in the SDK's `_check_for_final_output_from_tools`. Never triggered in their evaluations because Claude-4.5-Sonnet/GPT-5 rarely hallucinate tool names.
+
+2. **Fork workaround (committed HEAD):** Added `if tool_run.function_tool is not None` filter and changed to `continue` (skip) on unknown tools. Prevented the crash but **silently dropped** the tool call result → model received no response → SDK interpreted as task complete → premature exit after 1-7 tool calls.
+
+3. **Current fix (working tree):** `_make_dummy_tool(name)` creates a minimal `FunctionTool` wrapper so `FunctionToolResult(tool=dummy_tool)` doesn't crash the SDK. Error message reaches the model as an observation. Model can retry with a valid tool name. This completes the upstream authors' intended behavior.
+
+**Affected tasks (FT v2 run):** 6 tasks hit this bug. 4 experienced premature exits — `personal-website-construct` (2 calls), `task-tracker` (2 calls), `sync-todo-to-readme` (1 call), `shopping-helper` (7 calls). These are strong candidates to flip from FAIL to PASS with the fix. `canvas-art-quiz` hit it but already passed. `canvas-homework-grader-python` hit it but wasn't a premature exit (hit step limit).
+
+**Benchmarking fairness:** This is not a model behavior intervention — it completes the upstream authors' explicitly intended behavior. The fix is model-neutral.
+
+### 6.8 — Runaway Loops (Model Behavior, No Code Fix)
 
 The fine-tuned model repeats the same tool call with identical args 35-82 times after receiving an error, rather than adapting. This is a training issue.
 
-**Mitigation:** Added repetition detection in `utils/roles/task_agent.py` — if the same `(tool_name, args)` pair appears 5 consecutive times, the loop breaks early. Converts slow runaway inconclusives into fast deterministic failures.
+**Mitigation considered but removed:** We initially prototyped repetition detection (break after 5 identical consecutive calls) but removed it for benchmarking fairness — it would intervene in model behavior and only affect Qwen models. The 100-step `max_inner_steps` limit is the only cutoff, applied equally to all models.
 
 ### 6.9 — Qwen3 Thinking Mode
 
@@ -597,6 +607,7 @@ Note: `enable_thinking` must be passed inside `chat_template_kwargs`, NOT as a t
 |------|--------|-------------|
 | `utils/api_model/model_provider.py` | Modified | 422 content fix, hermes parser integration, extra headers support, cache_control empty block fix |
 | `utils/api_model/hermes_tool_parser.py` | **New** | Parses `<tool_call>` XML tags from fine-tuned model output |
+| `utils/openai_agents_monkey_patch/custom_run_impl.py` | Modified | Dummy tool wrapper for hallucinated tool names — completes upstream error-as-observation intent (Issue 11, see 6.7) |
 | `utils/roles/task_agent.py` | Modified | `claim_done` loop fix: added `tool_use_behavior` to stop SDK on stop-tools (see 6.6) |
 | `scripts/run_single_decoupled.sh` | Modified | Permission fix (`sudo chown` after preprocess) |
 | `scripts/run_single_containerized.sh` | Modified | Extra headers passthrough to container |
