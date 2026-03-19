@@ -16,7 +16,7 @@ Reference for anyone running Toolathlon evaluations with non-default models or e
 | 8 | [Canvas Postgres crash](#issue-8-canvas-postgres-crashes-after-deploy_containerssh) | All models | Workaround (script) |
 | 9 | [Stale eval results](#issue-9-stale-eval-results-from-previous-runs) | All reruns | Workaround (manual cleanup) |
 | 10 | [Request counter shows 0](#issue-10-decoupled-runner-request-counter-shows-0) | Decoupled runner | Open (cosmetic) |
-| 11 | [NoneType crash on malformed tool calls](#issue-11-early-crash--attributeerror-nonetype-object-has-no-attribute-name) | Fine-tuned models | Fixed |
+| 11 | [NoneType crash on malformed tool calls](#issue-11-early-crash--attributeerror-nonetype-object-has-no-attribute-name) | All models (fine-tuned most often) | Fixed |
 | 12 | [Runaway loops — same tool 35-82x](#issue-12-runaway-tool-call-loops--same-tool-called-35-82x) | Qwen3 (FT worse) | Model issue (unfixable) |
 | 13 | [`cache_control` on empty text blocks](#issue-13-cache_control-cannot-be-set-for-empty-text-blocks-anthropic-api) | Claude via Anthropic | Fixed |
 | 14 | [Portkey gateway routing error](#issue-14-portkey-gateway--x-portkey-provider-needs-to-be-passed) | Portkey-routed models | Workaround (config) |

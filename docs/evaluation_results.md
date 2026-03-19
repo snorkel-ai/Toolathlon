@@ -1,10 +1,10 @@
 # Toolathlon Evaluation Results
 
-Date: 2026-03-18
+Date: 2026-03-19
 
 ## 1. Executive Summary
 
-[Toolathlon](https://toolathlon.xyz/) is a benchmark for evaluating language agents on 600+ diverse, long-horizon tool-use tasks in realistic environments (Canvas LMS, email, Snowflake, Kubernetes, Google Workspace, etc.). We evaluated four model configurations on a 78-task subset, excluding Google Workspace tasks which are not yet configured.
+[Toolathlon](https://toolathlon.xyz/) is a benchmark for evaluating language agents on 600+ diverse, long-horizon tool-use tasks in realistic environments (Canvas LMS, email, Snowflake, Kubernetes, Google Workspace, etc.). We evaluated six model configurations on a 78-task subset, excluding Google Workspace tasks which are not yet configured.
 
 ### Results at a Glance
 
@@ -14,15 +14,16 @@ Date: 2026-03-18
 | Claude Opus 4.6 (Run 2, decoupled) | 37 | 39 | 0 | 0 | **48.7%** (37/76) |
 | Qwen3-30B Instruct (base) | 3 | 62 | 10 | 3 | **3.8%** (3/78) |
 | Qwen3-30B Instruct (fine-tuned, Run 2) | 3 | 41 | 33 | 1 | **3.9%** (3/77) |
-| Qwen3-30B Instruct (fine-tuned v2, in progress) | 3 | 53 | 10 | 0 | **4.5%** (3/66, 66/78 done) |
+| Qwen3-30B Instruct (fine-tuned v2) | 4 | 60 | 14 | 0 | **5.1%** (4/78) |
+| Qwen3-30B Instruct (fine-tuned v2, Run 2, Issue 11 fix) | 3 | 58 | 17 | 0 | **3.8%** (3/78) |
 
-Pass rate treats inconclusive and infra failures as failures. Opus Run 2 evaluated 76/78 tasks (2 missing: `ab-testing`, `experiments-recordings`).
+Pass rate treats inconclusive and infra failures as failures. Opus Run 2 evaluated 76/78 tasks (2 not evaluated: `experiments-recordings`, `ppt-analysis`).
 
 **Key findings:**
 - Claude Opus dramatically outperforms Qwen3-30B on long-horizon agentic tasks (48-50% vs 3-4%).
 - Opus results are stable across runs: 50.0% vs 48.7%, with 12 tasks flipping between runs (see Section 5.2).
 - All Opus failures are "agent completed, eval failed" — zero crashes or inconclusives in Run 2.
-- Fine-tuned v2 checkpoint shows marginal improvement over v1 (4.5% vs 3.9% at 66/78 tasks, still in progress). First non-git pass: `canvas-art-quiz`.
+- Fine-tuned v2 checkpoint shows marginal improvement over v1 (5.1% vs 3.9%). First non-git pass: `canvas-art-quiz`. First non-git non-Canvas pass: `ipad-edu-price`.
 
 ---
 
@@ -114,7 +115,7 @@ This is handled transparently by `utils/api_model/hermes_tool_parser.py` (see Se
 | Runner | **Decoupled** |
 | `max_tokens` | 8192 |
 | Tool call format | **Hermes `<tool_call>` tags in content** (same as FT v1) |
-| Status | In progress (66/78 tasks completed) |
+| Status | Completed |
 
 New fine-tuned checkpoint. Same framework fixes as FT v1. Uses `hermes_tool_parser.py` for tool call parsing.
 
@@ -179,7 +180,7 @@ We used the containerized runner for Opus Run 1, the decoupled runner for Opus R
 | Pass | 37 |
 | Fail | 39 |
 | Inconclusive | 0 |
-| Not evaluated | 2 (`ab-testing`, `experiments-recordings`) |
+| Not evaluated | 2 (`experiments-recordings`, `ppt-analysis`) |
 | **Pass rate** | **48.7%** (37/76) |
 
 Behavioral pattern: Opus uses an iterative call-observe-think cycle — makes a few tool calls, reads results, reasons, then acts. All 39 failures completed execution (`status: success`) but failed evaluation. Zero crashes or timeouts.
@@ -207,7 +208,7 @@ Behavioral pattern: Qwen3-30B often gets stuck calling the same tool repeatedly 
 | **Pass rate** | **3.9%** (3/77) |
 
 **Run 1 (no fixes):** 0/78 = 0% — all 47 inconclusives were `claim_done` loops
-**Run 2 (with fixes):** 3/77 = 3.9% — `claim_done` fix + repetition detection converted 14 inconclusives into fails/passes
+**Run 2 (with fixes):** 3/77 = 3.9% — `claim_done` fix converted 14 inconclusives into fails/passes
 
 The fine-tuned model passes the same 2 git tasks differently from the base model:
 - `git-milestone`, `git-repo`: **pass on FT, fail on base** — fine-tuning helped
@@ -216,46 +217,76 @@ The fine-tuned model passes the same 2 git tasks differently from the base model
 
 Remaining inconclusives are regular runaway loops (same tool called 35-82x), not `claim_done` loops. This is a training issue unrelated to the framework fixes.
 
-### Qwen3-30B Instruct (fine-tuned v2) — In Progress
+### Qwen3-30B Instruct (fine-tuned v2)
 
 | Metric | Value |
 |--------|-------|
-| Pass | 3 (`canvas-art-quiz`, `git-milestone`, `git-repo`) |
-| Fail | 53 |
-| Inconclusive | 10 (all step-limit exhaustion at 100 steps) |
+| Pass | 4 (`canvas-art-quiz`, `git-milestone`, `git-repo`, `ipad-edu-price`) |
+| Fail | 60 |
+| Inconclusive | 14 (all step-limit exhaustion at 100 steps) |
 | Infra failure | 0 |
-| **Pass rate** | **4.5%** (3/66, run in progress — 66/78 tasks completed) |
+| **Pass rate** | **5.1%** (4/78) |
 
-New checkpoint (`m6fw9e8c8o22wggpogmfqu7y`). Passes the same 2 git tasks as FT v1, plus `canvas-art-quiz` — the first non-git task to pass on any fine-tuned variant. All 10 inconclusives are step-limit exhaustion (`RuntimeError: Failed to get agent response within 100 inner steps`). Zero infra errors — cleanest run so far.
+New checkpoint (`m6fw9e8c8o22wggpogmfqu7y`). Passes the same 2 git tasks as FT v1, plus `canvas-art-quiz` (first non-git pass on any fine-tuned variant) and `ipad-edu-price` (first non-Canvas non-git pass). All 14 inconclusives are step-limit exhaustion (`RuntimeError: Failed to get agent response within 100 inner steps`). Zero infra errors — cleanest run so far.
 
 #### FT v2 Failure & Inconclusive Analysis
 
-**Inconclusive breakdown (9 tasks):**
+**Inconclusive breakdown (14 tasks):**
 
 | Pattern | Count | Tasks | Description |
 |---------|-------|-------|-------------|
 | Runaway loop (single tool >50%) | 3 | `huggingface-upload`, `travel-exchange`, `paper-checker` | Classic single-tool repetition (search_files 76x, get_historical_stock_prices 84x, search_files 70x) |
-| Distributed thrashing | 6 | `canvas-submit-late-work`, `detect-revised-terms`, `inventory-sync`, `notion-hr`, `travel-expense-reimbursement`, `woocommerce-new-product` | Model uses multiple tools but can't complete within 100 steps. More "intelligent" than pure runaway — e.g. `detect-revised-terms` does 45 PDF searches + 29 PDF reads |
+| Semi-runaway (dominant tool 30-50%) | 2 | `dataset-license-issue`, `hk-top-conf` | One tool dominates but with some variety in between |
+| Distributed thrashing | 9 | `canvas-submit-late-work`, `detect-revised-terms`, `experiments-recordings`, `inventory-sync`, `notion-hr`, `payable-invoice-checker`, `task-tracker`, `travel-expense-reimbursement`, `woocommerce-new-product` | Model uses multiple tools but can't complete within 100 steps. More "intelligent" than pure runaway — e.g. `detect-revised-terms` does 45 PDF searches + 29 PDF reads |
 
-All 9 hit the 100-step ceiling. The distributed thrashing tasks might benefit from a higher step limit — the model is doing real multi-service work, just too slowly.
+All 14 hit the 100-step ceiling. The distributed thrashing tasks might benefit from a higher step limit — the model is doing real multi-service work, just too slowly. 11 of 14 inconclusives are pure model behavior — no infra fix possible.
 
-**Failure breakdown (45 tasks):**
+**Failure breakdown (60 tasks):**
 
 | Category | Count | Pattern |
 |----------|-------|---------|
-| Early exit (<5 tool calls) | 3 | `personal-website-construct` (2 calls), `sync-todo-to-readme` (1 call), `task-tracker` (2 calls) — agent barely engaged |
-| Low effort (5-19 calls) | 18 | Tried briefly, produced wrong/missing output. Common: missing files, wrong row counts, couldn't find resources |
-| Medium effort (20-79 calls) | 23 | Substantive attempt, failed on details — format/structure wrong, partial completion, data mismatches |
-| High effort (80+ calls) | 1 | `canvas-list-test` (87 calls) — close to step limit |
+| Early exit (<5 tool calls) | 3 | `personal-website-construct` (2 calls), `sync-todo-to-readme` (1 call), `task-tracker` (2 calls) — agent barely engaged. Note: these were affected by the hallucinated tool name bug ([Issue 11](known_issues.md#issue-11-early-crash--attributeerror-nonetype-object-has-no-attribute-name)) |
+| Low effort (5-19 calls) | 22 | Tried briefly, produced wrong/missing output. Common: missing files, wrong row counts, couldn't find resources |
+| Medium effort (20-79 calls) | 31 | Substantive attempt, failed on details — format/structure wrong, partial completion, data mismatches |
+| High effort (80+ calls) | 4 | Close to step limit but didn't hit it — e.g. `canvas-list-test` (87 calls) |
 
 **Key regressions vs other Qwen runs:**
 - `git-bug-hunt`: PASS on base Qwen → FAIL on FT v2 (fine-tuning regression)
 - `find-alita-paper`: PASS on base Qwen → FAIL on FT v2 (9 calls, couldn't find PDF)
 
 **FT v2 vs FT v1 improvements:**
-- Fewer runaway loops: 9 inconclusives (v2) vs 18 (v1) — model completes instead of looping
-- New pass: `canvas-art-quiz` (failed on all prior Qwen runs)
-- 30 of 45 FT v2 failures passed on at least one Opus run, confirming the large capability gap between Claude Opus and Qwen3-30B on long-horizon tasks
+- Fewer inconclusives: 14 (v2) vs 33 (v1) — model completes more tasks instead of looping
+- New passes: `canvas-art-quiz` and `ipad-edu-price` (failed on all prior Qwen runs)
+- `ipad-edu-price` was the only task where base Qwen outperformed Opus — FT v2 now matches base on this task
+- 40 of 60 FT v2 failures passed on at least one Opus run, confirming the large capability gap between Claude Opus and Qwen3-30B on long-horizon tasks
+
+### Qwen3-30B Instruct (fine-tuned v2) — Run 2 (with Issue 11 fix)
+
+| Metric | Value |
+|--------|-------|
+| Pass | 3 (`canvas-art-quiz`, `git-milestone`, `notion-movies`) |
+| Fail | 58 |
+| Inconclusive | 17 (all step-limit exhaustion at 100 steps) |
+| Infra failure | 0 |
+| **Pass rate** | **3.8%** (3/78) |
+
+Full rerun of FT v2 with the Issue 11 fix (dummy tool wrapper for hallucinated tool names). The fix prevented premature exits — tasks like `personal-website-construct`, `sync-todo-to-readme`, and `shopping-helper` now run to completion instead of exiting after 1-7 calls. However, they exhaust the 100-step limit without passing, moving from FAIL to INC.
+
+#### FT v2 Run-to-Run Stability (Run 1 vs Run 2)
+
+21 tasks changed result between runs (~27% variance), significantly higher than Opus's ~15%:
+
+| Change | Count | Notable Tasks |
+|--------|-------|---------------|
+| FAIL → **PASS** | 1 | `notion-movies` |
+| **PASS** → FAIL | 1 | `ipad-edu-price` |
+| **PASS** → INC | 1 | `git-repo` |
+| FAIL → INC | 10 | `personal-website-construct`, `sync-todo-to-readme`, `shopping-helper` (Issue 11 fix), + 7 others |
+| INC → FAIL | 8 | `detect-revised-terms`, `task-tracker`, `travel-exchange`, + 5 others |
+
+**Issue 11 fix impact:** The 3 tasks with premature exits (`personal-website-construct`, `sync-todo-to-readme`, `shopping-helper`) moved from FAIL to INC as expected — the model now retries after hallucinated tool errors instead of exiting, but can't complete within 100 steps. The fix worked mechanically but didn't produce new passes.
+
+**Net effect:** -1 pass (4→3). The high variance (27% vs Opus's 15%) reflects the model's inconsistent tool-use strategy — small changes in early tool call outcomes cascade into different trajectories.
 
 ### 5.1 Head-to-Head: Opus vs Qwen (Opus Run 2 vs Qwen Base)
 
@@ -564,7 +595,7 @@ After:  status=success | tool_calls=46  | requests=12  | pass=true (eval passed)
 
 The trajectory shows the complete agent reasoning chain (explore workspace → search GitHub API → fetch repo data → write JSON → claim_done). All tool calls and responses are recorded. The eval script ran the same checks against the same groundtruth and passed.
 
-### 6.7 — Hallucinated Tool Names: SDK Crash → Silent Skip → Error Recovery (Issue 11)
+### 6.7 — Hallucinated Tool Names: SDK Crash → Silent Skip → Error Recovery (Issue 11) — FIXED
 
 **Affected:** All models — any model that calls a tool name not in the registered function map
 
@@ -574,11 +605,13 @@ When a model hallucinates a non-existent tool name (e.g., `gw-github-get_reposit
 
 1. **Upstream (origin/main):** Correctly creates `ToolRunFunction(function_tool=None)` and returns error string `"Tool X not found in agent Y"`. However, has a latent crash bug: `FunctionToolResult(tool=None)` causes `AttributeError: 'NoneType' object has no attribute 'name'` in the SDK's `_check_for_final_output_from_tools`. Never triggered in their evaluations because Claude-4.5-Sonnet/GPT-5 rarely hallucinate tool names.
 
-2. **Fork workaround (committed HEAD):** Added `if tool_run.function_tool is not None` filter and changed to `continue` (skip) on unknown tools. Prevented the crash but **silently dropped** the tool call result → model received no response → SDK interpreted as task complete → premature exit after 1-7 tool calls.
+2. **Fork workaround (intermediate):** Added `if tool_run.function_tool is not None` filter and changed to `continue` (skip) on unknown tools. Prevented the crash but **silently dropped** the tool call result → model received no response → SDK interpreted as task complete → premature exit after 1-7 tool calls.
 
-3. **Current fix (working tree):** `_make_dummy_tool(name)` creates a minimal `FunctionTool` wrapper so `FunctionToolResult(tool=dummy_tool)` doesn't crash the SDK. Error message reaches the model as an observation. Model can retry with a valid tool name. This completes the upstream authors' intended behavior.
+3. **Current fix (committed):** `_make_dummy_tool(name)` creates a minimal `FunctionTool` wrapper so `FunctionToolResult(tool=dummy_tool)` doesn't crash the SDK. Error message reaches the model as an observation. Model can retry with a valid tool name. This completes the upstream authors' intended behavior.
 
-**Affected tasks (FT v2 run):** 6 tasks hit this bug. 4 experienced premature exits — `personal-website-construct` (2 calls), `task-tracker` (2 calls), `sync-todo-to-readme` (1 call), `shopping-helper` (7 calls). These are strong candidates to flip from FAIL to PASS with the fix. `canvas-art-quiz` hit it but already passed. `canvas-homework-grader-python` hit it but wasn't a premature exit (hit step limit).
+**Affected tasks (FT v2 run):** 6 tasks hit this bug. 4 experienced premature exits — `personal-website-construct` (2 calls), `task-tracker` (2 calls), `sync-todo-to-readme` (1 call), `shopping-helper` (7 calls). `canvas-art-quiz` hit it but already passed. `canvas-homework-grader-python` hit it but wasn't a premature exit (hit step limit).
+
+**Cross-run impact:** 16 tasks affected in FT v1, 8 in base Qwen, 3 in Opus (no premature exits on Opus — Opus recovers gracefully even with the silent skip).
 
 **Benchmarking fairness:** This is not a model behavior intervention — it completes the upstream authors' explicitly intended behavior. The fix is model-neutral.
 
@@ -586,7 +619,7 @@ When a model hallucinates a non-existent tool name (e.g., `gw-github-get_reposit
 
 The fine-tuned model repeats the same tool call with identical args 35-82 times after receiving an error, rather than adapting. This is a training issue.
 
-**Mitigation considered but removed:** We initially prototyped repetition detection (break after 5 identical consecutive calls) but removed it for benchmarking fairness — it would intervene in model behavior and only affect Qwen models. The 100-step `max_inner_steps` limit is the only cutoff, applied equally to all models.
+**Mitigation considered and removed:** We prototyped repetition detection (break after 5 identical consecutive calls) but removed it for benchmarking fairness — it would intervene in model behavior and only affect Qwen models. The 100-step `max_inner_steps` limit is the only cutoff, applied equally to all models. Repetition detection is **not active** in the current codebase.
 
 ### 6.9 — Qwen3 Thinking Mode
 
@@ -607,10 +640,11 @@ Note: `enable_thinking` must be passed inside `chat_template_kwargs`, NOT as a t
 |------|--------|-------------|
 | `utils/api_model/model_provider.py` | Modified | 422 content fix, hermes parser integration, extra headers support, cache_control empty block fix |
 | `utils/api_model/hermes_tool_parser.py` | **New** | Parses `<tool_call>` XML tags from fine-tuned model output |
-| `utils/openai_agents_monkey_patch/custom_run_impl.py` | Modified | Dummy tool wrapper for hallucinated tool names — completes upstream error-as-observation intent (Issue 11, see 6.7) |
+| `utils/openai_agents_monkey_patch/custom_run_impl.py` | Modified | Dummy tool wrapper for hallucinated tool names — completes upstream error-as-observation intent ([Issue 11](known_issues.md#issue-11-early-crash--attributeerror-nonetype-object-has-no-attribute-name), see 6.7) |
 | `utils/roles/task_agent.py` | Modified | `claim_done` loop fix: added `tool_use_behavior` to stop SDK on stop-tools (see 6.6) |
 | `scripts/run_single_decoupled.sh` | Modified | Permission fix (`sudo chown` after preprocess) |
 | `scripts/run_single_containerized.sh` | Modified | Extra headers passthrough to container |
+| `utils/mcp_servers/drive_helper.py` | Modified | Handle org permission policy restrictions gracefully (Google Drive tasks) |
 | `scripts/google_free_tasks.txt` | **New** | 78-task list excluding Google Workspace tasks |
 | `scripts/qwen3_run.json` | **New** | Eval config for Qwen3-30B base |
 | `scripts/qwen3_ft_run.json` | **New** | Eval config for Qwen3-30B fine-tuned |
@@ -626,7 +660,7 @@ Note: `enable_thinking` must be passed inside `chat_template_kwargs`, NOT as a t
 
 Mandatory before every run. Validates:
 - All 9 app containers running
-- Canvas API responding with 100+ users
+- Canvas API responding with 500+ users
 - Email and WooCommerce reachable
 - No stale task containers
 - Dump directory clean (no stale evals, no root-owned files)

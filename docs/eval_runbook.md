@@ -166,8 +166,7 @@ Create a model-specific config file (e.g. `scripts/qwen3_run.json`):
 **Notes:**
 - `extra_body.chat_template_kwargs.enable_thinking` controls Qwen3 thinking mode. PI's API defaults to `false`.
 - Do NOT use `extra_body.enable_thinking` directly — PI's vLLM endpoint rejects it (422 error).
-- The `model` fields in the config are overridden by CLI args in `run_parallel.sh` for the **containerized** runner.
-- For the **decoupled** runner, the host agent loop reads the model name from the eval config's `agent.model.short_name`. You MUST create a separate config for each model variant (e.g. `scripts/qwen3_ft_run.json` for a fine-tuned checkpoint).
+- The `model` fields in the config are overridden by CLI args (`--model_short_name`) in both runners when invoked via `run_parallel.sh`. You MUST still create a separate config for each model variant (e.g. `scripts/qwen3_ft_run.json`) because generation params (`extra_body`, `max_tokens`) are read from the config.
 - **Step limit override:** `run_parallel.sh` hardcodes `MAX_STEPS=100` which overrides the config's `max_steps_under_single_turn_mode` via CLI arg. The effective step limit for all parallel runs is 100, not 200. See [Issue 15](known_issues.md#issue-15-run_parallelsh-overrides-config-step-limit-to-100).
 
 #### Config per Model Variant
@@ -443,7 +442,7 @@ For detailed per-task breakdowns and cross-model analysis, see `docs/evaluation_
 
 ## Known Issues
 
-For the full list of 14 known issues (symptoms, root causes, fixes, and affected models), see [known_issues.md](known_issues.md). The troubleshooting table above links to specific issues.
+For the full list of 15 known issues (symptoms, root causes, fixes, and affected models), see [known_issues.md](known_issues.md). The troubleshooting table above links to specific issues.
 
 For architecture diagrams (containerized vs decoupled runner, agent loop, model provider routing), see [architecture.md](architecture.md).
 
@@ -469,11 +468,10 @@ For architecture diagrams (containerized vs decoupled runner, agent loop, model 
 - **Via Portkey gateway (current setup):**
   ```bash
   export TOOLATHLON_OPENAI_BASE_URL="https://api.portkey.ai/v1"
-  export TOOLATHLON_OPENAI_API_KEY="dummy"
-  export TOOLATHLON_OPENAI_EXTRA_HEADERS='{"x-portkey-api-key": "'$PORTKEY_API_KEY'"}'
+  export TOOLATHLON_OPENAI_API_KEY="$PORTKEY_API_KEY"
   ```
-  Model name: `@anthropic/claude-opus-4-6`
-- **Via Anthropic directly:** `TOOLATHLON_OPENAI_BASE_URL="https://api.anthropic.com/v1"`, no extra headers needed.
+  Model name: `@anthropic/claude-opus-4-6`. The `$PORTKEY_API_KEY` is a Portkey gateway key with your Anthropic API key configured on the Portkey dashboard. See [Issue 14](known_issues.md#issue-14-portkey-gateway--x-portkey-provider-needs-to-be-passed) for details.
+- **Via Anthropic directly:** `TOOLATHLON_OPENAI_BASE_URL="https://api.anthropic.com/v1"`, `TOOLATHLON_OPENAI_API_KEY` set to your Anthropic key. No extra headers needed.
 - The containerized runner works fine (no 422 issues).
 - Uses iterative call-observe-think pattern — rarely hits step limits.
 - **Cache control bug (fixed):** Empty `content: ""` on assistant messages combined with Claude prompt caching caused `cache_control cannot be set for empty text blocks` errors. Fixed in `model_provider.py`. See [Issue 13](known_issues.md#issue-13-cache_control-cannot-be-set-for-empty-text-blocks-anthropic-api).
