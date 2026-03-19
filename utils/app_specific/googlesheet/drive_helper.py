@@ -80,15 +80,17 @@ def copy_sheet_to_folder(drive_service, sheet_url, folder_id):
         body=rename_metadata
     ).execute()
     
-    permission = {
-        'role': 'writer',
-        'type': 'anyone'
-    }
-    
-    drive_service.permissions().create(
-        fileId=copied_file['id'],
-        body=permission
-    ).execute()
+    try:
+        permission = {
+            'role': 'writer',
+            'type': 'anyone'
+        }
+        drive_service.permissions().create(
+            fileId=copied_file['id'],
+            body=permission
+        ).execute()
+    except Exception as e:
+        print(f"Warning: Could not set public permission on copied file (org policy may restrict this): {e}")
     
     return copied_file['id']
 

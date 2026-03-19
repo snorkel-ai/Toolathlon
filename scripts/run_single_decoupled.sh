@@ -221,6 +221,11 @@ if [ "$USE_UNIFIED_MODEL_ENV" = true ]; then
         EXTRA_ENV_ARGS+=("-e" "TOOLATHLON_OPENAI_API_KEY=${TOOLATHLON_OPENAI_API_KEY}")
         echo "Detected host TOOLATHLON_OPENAI_API_KEY, will pass into container"
     fi
+
+    if [ ! -z "${TOOLATHLON_OPENAI_EXTRA_HEADERS+x}" ]; then
+        EXTRA_ENV_ARGS+=("-e" "TOOLATHLON_OPENAI_EXTRA_HEADERS=${TOOLATHLON_OPENAI_EXTRA_HEADERS}")
+        echo "Detected host TOOLATHLON_OPENAI_EXTRA_HEADERS, will pass into container"
+    fi
 else
     echo "Skipping TOOLATHLON_OPENAI_* passthrough for Claude SDK host loop"
 fi
@@ -569,6 +574,11 @@ if [ $PREPROCESS_EXIT_CODE -ne 0 ]; then
     exit $PREPROCESS_EXIT_CODE
 fi
 echo "✓ Preprocess completed"
+
+# Fix ownership of container-created files so host agent can write to them
+if [ -d "$output_folder" ]; then
+    sudo chown -R "$(id -u):$(id -g)" "$output_folder" 2>/dev/null || true
+fi
 
 HOST_BUNDLE_FILE="${output_folder}/task_bundle.json"
 if [ ! -f "$HOST_BUNDLE_FILE" ]; then

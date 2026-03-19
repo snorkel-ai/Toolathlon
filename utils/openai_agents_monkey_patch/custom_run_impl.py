@@ -3,6 +3,14 @@ from __future__ import annotations
 from agents._run_impl import *
 from agents.util import _coro, _error_tracing
 
+
+def _make_dummy_tool(name: str) -> FunctionTool:
+    """Create a minimal FunctionTool so the SDK doesn't crash on tool.name access
+    when the model hallucinates a tool name that doesn't exist."""
+    async def _noop(ctx, args):
+        return ""
+    return FunctionTool(name=name, description="", params_json_schema={}, on_invoke_tool=_noop)
+
 @classmethod
 async def my_execute_function_tool_calls(
     cls,
@@ -58,9 +66,11 @@ async def my_execute_function_tool_calls(
 
     results = await asyncio.gather(*tasks)
 
+    # Use a dummy tool when function_tool is None (hallucinated tool name) so the
+    # error message reaches the model and it can retry with a valid tool name.
     return [
         FunctionToolResult(
-            tool=tool_run.function_tool,
+            tool=tool_run.function_tool or _make_dummy_tool(tool_run.tool_call.name),
             output=result,
             run_item=ToolCallOutputItem(
                 output=result,
@@ -140,16 +150,20 @@ def my_process_model_response(
         # Regular function tool call
         else:
             if output.name not in function_map:
-                # add not found tool call processing here
-                logger.warning(f"Tool {output.name} not found in agent {agent.name}")
+                # Tool name not registered — return an error to the model instead of
+                # crashing (original SDK raises ModelBehaviorError) or silently skipping
+                # (which caused premature task exits). This lets the model retry with a
+                # valid tool name. The error message is produced by
+                # my_execute_function_tool_calls when function_tool is None.
+                logger.warning(f"Tool '{output.name}' not found in agent {agent.name}, returning error to model")
                 items.append(ToolCallItem(raw_item=output, agent=agent))
                 functions.append(
-                        ToolRunFunction(
-                            tool_call=output,
-                            function_tool=None,
-                        )
+                    ToolRunFunction(
+                        tool_call=output,
+                        function_tool=None,
                     )
-                continue            
+                )
+                continue
             items.append(ToolCallItem(raw_item=output, agent=agent))
             functions.append(
                 ToolRunFunction(

@@ -119,6 +119,30 @@ class ConverterWithExplicitReasoningContent(Converter):
                     )
                 )
 
+        # Fallback: parse <tool_call> tags from text content when provider
+        # does not return structured tool_calls (e.g. Qwen on pinference).
+        # Covers both tool_calls=None and tool_calls=[] (empty list).
+        if (message.tool_calls is None or len(message.tool_calls) == 0) and message.content:
+            from utils.api_model.hermes_tool_parser import parse_hermes_tool_calls, strip_tool_call_tags
+            parsed_tcs = parse_hermes_tool_calls(message.content)
+            for tc in parsed_tcs:
+                items.append(
+                    ResponseFunctionToolCall(
+                        id=FAKE_RESPONSES_ID,
+                        call_id=tc.call_id,
+                        arguments=tc.arguments,
+                        name=tc.name,
+                        type="function_call",
+                    )
+                )
+            if parsed_tcs and message_item.content:
+                for i, c in enumerate(message_item.content):
+                    if isinstance(c, ResponseOutputText):
+                        message_item.content[i] = ResponseOutputText(
+                            text=strip_tool_call_tags(c.text),
+                            type="output_text", annotations=[]
+                        )
+
         return items
 
 
@@ -164,6 +188,7 @@ class ConverterWithExplicitReasoningContent(Converter):
             nonlocal current_assistant_msg
             if current_assistant_msg is None:
                 current_assistant_msg = ChatCompletionAssistantMessageParam(role="assistant")
+                current_assistant_msg["content"] = ""
                 current_assistant_msg["tool_calls"] = []
             return current_assistant_msg
 
@@ -260,6 +285,8 @@ class ConverterWithExplicitReasoningContent(Converter):
                 if text_segments:
                     combined = "\n".join(text_segments)
                     new_asst["content"] = combined
+                else:
+                    new_asst["content"] = ""
 
                 new_asst["tool_calls"] = []
                 current_assistant_msg = new_asst
@@ -378,7 +405,7 @@ class OpenAIChatCompletionsModelWithRetry(OpenAIChatCompletionsModel):
         modified_messages = []
         for i, message in enumerate(messages):
             new_message = message.copy()
-            if i in indices and isinstance(message.get('content'), str):
+            if i in indices and isinstance(message.get('content'), str) and message['content']:
                 new_message['content'] = [
                     {
                         'type': 'text',
@@ -585,9 +612,9 @@ class OpenAIChatCompletionsModelWithRetry(OpenAIChatCompletionsModel):
             if model_config.get('reasoning_effort') is not None:
                 base_params['reasoning_effort'] = model_config['reasoning_effort']
 
-            # for claude-4.5-sonnet, top_p and temperament cannot be set simultaneously
-            if "claude" in self.model and any(version in self.model for version in ["4.5", "4-5"]):
-                base_params.pop('top_p')
+            # Anthropic does not allow temperature and top_p to be set simultaneously
+            if "claude" in self.model:
+                base_params.pop('top_p', None)
         
         ret = await self._get_client().chat.completions.create(**base_params)
 
@@ -1167,11 +1194,18 @@ class CustomModelProviderUnified(ModelProvider):
         api_key = os.getenv('TOOLATHLON_OPENAI_API_KEY', "fake-key")
         if api_key == "fake-key":
             print("[Warning] TOOLATHLON_OPENAI_API_KEY is not set! Usually this is only expected when you are running some self-deployed models like via vllm or sglang!")
+        # Support extra headers via TOOLATHLON_OPENAI_EXTRA_HEADERS (JSON string)
+        extra_headers = {}
+        extra_headers_str = os.getenv('TOOLATHLON_OPENAI_EXTRA_HEADERS', None)
+        if extra_headers_str:
+            import json
+            extra_headers = json.loads(extra_headers_str)
         client = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
+            default_headers=extra_headers if extra_headers else None,
         )
-        return OpenAIChatCompletionsModelWithRetry(model=model_name, 
+        return OpenAIChatCompletionsModelWithRetry(model=model_name,
                                                    openai_client=client,
                                                    debug=debug,
                                                    short_model_name=short_model_name)
