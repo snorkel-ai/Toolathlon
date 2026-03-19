@@ -4,7 +4,9 @@ apply-phd-email
 arrange-workspace
 canvas-arrange-exam
 canvas-art-manager
+canvas-art-quiz
 canvas-do-quiz
+canvas-homework-grader-python
 canvas-list-test
 canvas-new-students-notification
 canvas-submit-late-work

@@ -4,41 +4,41 @@ Date: 2026-03-19
 
 ## 1. Executive Summary
 
-[Toolathlon](https://toolathlon.xyz/) is a benchmark for evaluating language agents on 600+ diverse, long-horizon tool-use tasks in realistic environments (Canvas LMS, email, Snowflake, Kubernetes, Google Workspace, etc.). We evaluated three model configurations (Claude Opus 4.6, Qwen3-30B base, Qwen3-30B fine-tuned v2) with 3 trials each. All statistics below are computed on the **73 common tasks** present in all 9 runs (see `scripts/common_73_tasks.txt`). 5 tasks were excluded due to preprocessing failures or not being evaluated across all runs.
+[Toolathlon](https://toolathlon.xyz/) is a benchmark for evaluating language agents on 600+ diverse, long-horizon tool-use tasks in realistic environments (Canvas LMS, email, Snowflake, Kubernetes, Google Workspace, etc.). We evaluated three model configurations (Claude Opus 4.6, Qwen3-30B base, Qwen3-30B fine-tuned v2) with 3 trials each. All statistics below are computed on the **75 common tasks** present in all 9 runs (see `scripts/common_75_tasks.txt`). 3 tasks were excluded due to not being evaluated across all Opus runs (`experiments-recordings`, `mrbeast-analysis`, `ppt-analysis`).
 
-### Results at a Glance — Per Run (73 common tasks)
+### Results at a Glance — Per Run (75 common tasks)
 
 | Run | Pass | Fail | INC | Pass Rate |
 |-----|------|------|-----|-----------|
-| Claude Opus 4.6 (Run 1, containerized) | 37 | 34 | 2 | **50.7%** |
-| Claude Opus 4.6 (Run 2, decoupled) | 36 | 37 | 0 | **49.3%** |
-| Claude Opus 4.6 (Run 3, decoupled) | 35 | 38 | 0 | **47.9%** |
-| Qwen3-30B Base (Run 1) | 3 | 60 | 10 | **4.1%** |
-| Qwen3-30B Base (Run 2) | 1 | 63 | 9 | **1.4%** |
-| Qwen3-30B Base (Run 3) | 2 | 57 | 14 | **2.7%** |
-| Qwen3-30B FT v2 (Run 1) | 3 | 57 | 13 | **4.1%** |
-| Qwen3-30B FT v2 (Run 2) | 2 | 56 | 15 | **2.7%** |
-| Qwen3-30B FT v2 (Run 3) | 0 | 65 | 8 | **0.0%** |
+| Claude Opus 4.6 (Run 1, containerized) | 38 | 35 | 2 | **50.7%** |
+| Claude Opus 4.6 (Run 2, decoupled) | 37 | 38 | 0 | **49.3%** |
+| Claude Opus 4.6 (Run 3, decoupled) | 36 | 39 | 0 | **48.0%** |
+| Qwen3-30B Base (Run 1) | 5 | 60 | 10 | **6.7%** |
+| Qwen3-30B Base (Run 2) | 3 | 63 | 9 | **4.0%** |
+| Qwen3-30B Base (Run 3) | 2 | 59 | 14 | **2.7%** |
+| Qwen3-30B FT v2 (Run 1) | 4 | 58 | 13 | **5.3%** |
+| Qwen3-30B FT v2 (Run 2) | 3 | 57 | 15 | **4.0%** |
+| Qwen3-30B FT v2 (Run 3) | 0 | 67 | 8 | **0.0%** |
 
-### 3-Trial Aggregate (73 common tasks)
+### 3-Trial Aggregate (75 common tasks)
 
 | Metric | Opus | Qwen Base | FT v2 |
 |--------|------|-----------|-------|
-| **Pass@1 (avg ± std)** | **36.0 (49.3% ± 0.8)** | 2.0 (2.7% ± 0.8) | 1.7 (2.3% ± 1.2) |
-| **Pass@3** | **43/73 = 58.9%** | 4/73 = 5.5% | 4/73 = 5.5% |
-| **Pass^3** | **24/73 = 32.9%** | 0/73 = 0.0% | 0/73 = 0.0% |
+| **Pass@1 (avg ± std)** | **37.0 (49.3% ± 0.8)** | 3.3 (4.4% ± 1.2) | 2.3 (3.1% ± 1.7) |
+| **Pass@3** | **45/75 = 60.0%** | 6/75 = 8.0% | 5/75 = 6.7% |
+| **Pass^3** | **24/75 = 32.0%** | 0/75 = 0.0% | 0/75 = 0.0% |
 
 - **Pass@1**: Average success rate across 3 independent trials.
 - **Pass@3**: Fraction of tasks solved at least once in 3 trials (capability coverage).
 - **Pass^3**: Fraction of tasks solved in all 3 trials (reliability).
 
 **Key findings:**
-- Claude Opus dramatically outperforms Qwen3-30B: 49.3% vs 2.7% avg pass@1 (~18x gap).
-- Opus is remarkably stable across runs: 35-37 passes (± 0.8). Zero inconclusives in Runs 2 and 3.
-- Opus pass@3 = 58.9% — it can solve 43 different tasks, but only 24 reliably (pass^3 = 32.9%). 19 tasks are "flaky" (pass 1-2 of 3 runs).
+- Claude Opus dramatically outperforms Qwen3-30B: 49.3% vs 4.4% avg pass@1 (~11x gap).
+- Opus is remarkably stable across runs: 36-38 passes (± 0.8). Zero inconclusives in Runs 2 and 3.
+- Opus pass@3 = 60.0% — it can solve 45 different tasks, but only 24 reliably (pass^3 = 32.0%). 21 tasks are "flaky" (pass 1-2 of 3 runs).
 - **Qwen models have zero pass^3** — no task is reliably solved across all 3 trials.
-- Fine-tuning did not improve pass rate: FT v2 avg 2.3% vs Base avg 2.7%. Fine-tuning helped on `git-milestone` (0→2/3) but hurt on `git-bug-hunt` (2→0/3).
-- 30 of 73 tasks were never solved by any model across all 9 runs (genuinely hard or infra-dependent).
+- Fine-tuning did not improve pass rate: FT v2 avg 3.1% vs Base avg 4.4%. Fine-tuning helped on `git-milestone` (0→2/3) but hurt on `git-bug-hunt` (2→0/3) and `canvas-art-quiz` (2→2/3 but Base also 2/3).
+- 29 of 75 tasks were never solved by any model across all 9 runs (genuinely hard or infra-dependent).
 
 ---
 
@@ -661,7 +661,7 @@ Note: `enable_thinking` must be passed inside `chat_template_kwargs`, NOT as a t
 | `scripts/run_single_containerized.sh` | Modified | Extra headers passthrough to container |
 | `utils/mcp_servers/drive_helper.py` | Modified | Handle org permission policy restrictions gracefully (Google Drive tasks) |
 | `scripts/google_free_tasks.txt` | **New** | 78-task list excluding Google Workspace tasks |
-| `scripts/common_73_tasks.txt` | **New** | 73-task common subset present in all 9 runs (used for 3-trial aggregate stats) |
+| `scripts/common_75_tasks.txt` | **New** | 73-task common subset present in all 9 runs (used for 3-trial aggregate stats) |
 | `scripts/qwen3_run.json` | **New** | Eval config for Qwen3-30B base |
 | `scripts/qwen3_ft_run.json` | **New** | Eval config for Qwen3-30B fine-tuned |
 | `scripts/qwen3_ft_run_v2.json` | **New** | Eval config for Qwen3-30B fine-tuned v2 checkpoint |
